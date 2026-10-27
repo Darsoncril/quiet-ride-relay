@@ -9,6 +9,14 @@ const MODELS=['@cf/google/gemma-3-12b-it','@cf/meta/llama-3.1-8b-instruct'];
 async function handleAI(request, env){
   const J={...CORS,'content-type':'application/json'};
   if(request.method==='OPTIONS') return new Response(null,{headers:CORS});
+  if(request.method==='GET'){
+    const out={ai_binding:!!env.AI,results:{}};
+    for(const model of MODELS){
+      try{ const r=await env.AI.run(model,{messages:[{role:'user',content:'Скажи привет одним словом'}],max_tokens:30}); out.results[model]=r; }
+      catch(e){ out.results[model]='ERROR: '+(e&&e.message||e); }
+    }
+    return new Response(JSON.stringify(out,null,1),{headers:{...CORS,'content-type':'text/plain; charset=utf-8'}});
+  }
   if(request.method!=='POST') return new Response('POST only',{status:405,headers:CORS});
   if(!env.AI) return new Response(JSON.stringify({reply:'',error:'no AI binding'}),{status:500,headers:J});
   let b; try{ b=await request.json() }catch(e){ return new Response('bad json',{status:400,headers:CORS}) }
@@ -18,15 +26,15 @@ async function handleAI(request, env){
   while(msgs.length&&msgs[0].role!=='user') msgs.shift();
   if(!msgs.length) return new Response('no messages',{status:400,headers:CORS});
   const messages=[{role:'system',content:SYSTEM+'\nСейчас в игре: '+JSON.stringify(b.ctx||{})},...msgs];
-  let reply='';
+  let reply='',err='';
   for(const model of MODELS){
     try{
       const r=await env.AI.run(model,{messages,max_tokens:150});
       reply=String(r.response||(r.choices&&r.choices[0]&&r.choices[0].message&&r.choices[0].message.content)||'').trim();
       if(reply) break;
-    }catch(e){}
+    }catch(e){ err+=model+': '+(e&&e.message||e)+' | '; }
   }
-  return new Response(JSON.stringify({reply}),{headers:J});
+  return new Response(JSON.stringify({reply,error:err}),{headers:J});
 }
 
 export default {
