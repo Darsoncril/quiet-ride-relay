@@ -5,7 +5,7 @@
 const CORS={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Methods':'POST, OPTIONS','Access-Control-Allow-Headers':'Content-Type'};
 const SYSTEM=`Ты — стикмен, пассажир на переднем сиденье в уютной спокойной игре «Тихая поездка». Ты дружелюбный, чуть ироничный болтун. Отвечай по-русски, 1–2 коротких предложения, без списков и markdown. На заднем сиденье едет кот. Реагируй на происходящее в игре (скорость, ночь, дождь, город), но не пересказывай данные, как робот. Если игрок сбил пешехода — отреагируй в образе (шокированно, но в рамках игры), без подробностей насилия.`;
 
-const MODELS=['@cf/google/gemma-3-12b-it','@cf/meta/llama-3.1-8b-instruct'];
+const MODELS=['@cf/zai-org/glm-4.7-flash','@cf/google/gemma-4-26b-a4b-it','@cf/meta/llama-3.1-8b-instruct-fast','@cf/meta/llama-3.3-70b-instruct-fp8-fast'];
 async function handleAI(request, env){
   const J={...CORS,'content-type':'application/json'};
   if(request.method==='OPTIONS') return new Response(null,{headers:CORS});
@@ -29,7 +29,7 @@ async function handleAI(request, env){
   let reply='',err='';
   for(const model of MODELS){
     try{
-      const r=await env.AI.run(model,{messages,max_tokens:150});
+      const r=await env.AI.run(model,{messages,max_tokens:300});
       reply=String(r.response||(r.choices&&r.choices[0]&&r.choices[0].message&&r.choices[0].message.content)||'').trim();
       if(reply) break;
     }catch(e){ err+=model+': '+(e&&e.message||e)+' | '; }
