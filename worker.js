@@ -1,9 +1,38 @@
 // Ретранслятор комнат для «Тихой поездки» (Cloudflare Worker + Durable Object)
 // Хозяин и гости соединяются по WebSocket, сервер только пересылает сообщения.
 
+/* ===== ИИ-сосед: маршрут /ai ===== */
+const CORS={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Methods':'POST, OPTIONS','Access-Control-Allow-Headers':'Content-Type'};
+const SYSTEM=`Ты — стикмен, пассажир на переднем сиденье в уютной спокойной игре «Тихая поездка». Ты дружелюбный, чуть ироничный болтун. Отвечай по-русски, 1–2 коротких предложения, без списков и markdown. На заднем сиденье едет кот. Реагируй на происходящее в игре (скорость, ночь, дождь, город), но не пересказывай данные, как робот. Если игрок сбил пешехода — отреагируй в образе (шокированно, но в рамках игры), без подробностей насилия.`;
+
+const MODELS=['@cf/google/gemma-3-12b-it','@cf/meta/llama-3.1-8b-instruct'];
+async function handleAI(request, env){
+  const J={...CORS,'content-type':'application/json'};
+  if(request.method==='OPTIONS') return new Response(null,{headers:CORS});
+  if(request.method!=='POST') return new Response('POST only',{status:405,headers:CORS});
+  if(!env.AI) return new Response(JSON.stringify({reply:'',error:'no AI binding'}),{status:500,headers:J});
+  let b; try{ b=await request.json() }catch(e){ return new Response('bad json',{status:400,headers:CORS}) }
+  const msgs=(Array.isArray(b.messages)?b.messages:[]).slice(-10)
+    .map(m=>({role:m.role==='assistant'?'assistant':'user',content:String(m.content||'').slice(0,300)}))
+    .filter(m=>m.content);
+  while(msgs.length&&msgs[0].role!=='user') msgs.shift();
+  if(!msgs.length) return new Response('no messages',{status:400,headers:CORS});
+  const messages=[{role:'system',content:SYSTEM+'\nСейчас в игре: '+JSON.stringify(b.ctx||{})},...msgs];
+  let reply='';
+  for(const model of MODELS){
+    try{
+      const r=await env.AI.run(model,{messages,max_tokens:150});
+      reply=String(r.response||(r.choices&&r.choices[0]&&r.choices[0].message&&r.choices[0].message.content)||'').trim();
+      if(reply) break;
+    }catch(e){}
+  }
+  return new Response(JSON.stringify({reply}),{headers:J});
+}
+
 export default {
   async fetch(req, env) {
     const url = new URL(req.url);
+    if (url.pathname === '/ai') return handleAI(req, env);
     const m = url.pathname.match(/^\/room\/([A-Za-z0-9]{4})$/);
     if (!m) return new Response('Quiet Ride relay: ok');
     const id = env.ROOM.idFromName(m[1].toUpperCase());
